@@ -17,8 +17,6 @@ async function getSession(tab) {
   })
 
   console.log(storage)
-
-  
 }
 
 const handler: PlasmoMessaging.MessageHandler = async (req, res) => {
