@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js"
 import type { Session, User as SupabaseUser } from "@supabase/supabase-js"
 import {
   QueryClient,
@@ -6,74 +5,93 @@ import {
   useMutation
 } from "@tanstack/react-query"
 import { createContext, useContext, useEffect, useState } from "react"
-
+import { Storage } from "@plasmohq/storage"
 import { sendToBackground } from "@plasmohq/messaging"
 
 import { CountButton } from "~features/count-button"
+import { supabase } from "~lib/supabase"
 
 import "~style.css"
 
 const queryClient = new QueryClient()
-
-// Initialize Supabase client - you'll need to add these env variables
-const supabaseUrl = process.env.PLASMO_PUBLIC_SUPABASE_URL || ""
-const supabaseAnonKey = process.env.PLASMO_PUBLIC_SUPABASE_ANON_KEY || ""
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-supabase.auth.onAuthStateChange((event, session) => {
-  if (session && session.provider_token) {
-    window.localStorage.setItem("oauth_provider_token", session.provider_token)
-  }
-  if (session && session.provider_refresh_token) {
-    window.localStorage.setItem(
-      "oauth_provider_refresh_token",
-      session.provider_refresh_token
-    )
-  }
-  if (event === "SIGNED_OUT") {
-    window.localStorage.removeItem("oauth_provider_token")
-    window.localStorage.removeItem("oauth_provider_refresh_token")
-  }
-})
+const storage = new Storage({ area: "local" })
 
 // Auth context for the extension
 interface AuthContextType {
   user: SupabaseUser | null
   session: Session | null
+  loading: boolean
+  signOut: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  session: null
+  session: null,
+  loading: true,
+  signOut: async () => {}
 })
 
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-    })
+    const initializeAuth = async () => {
+      try {
+        // Check for stored session first
+        const storedSession = await storage.get("supabase_session")
+        
+        if (storedSession) {
+          const { data, error } = await supabase.auth.setSession(storedSession)
+          if (!error && data.session) {
+            setSession(data.session)
+            setUser(data.session.user)
+            setLoading(false)
+            return
+          }
+        }
+
+        // Fallback to getting current session
+        const { data: { session } } = await supabase.auth.getSession()
+        setSession(session)
+        setUser(session?.user ?? null)
+      } catch (error) {
+        console.error("Auth initialization error:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    initializeAuth()
 
     // Listen for auth changes
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session)
+        setUser(session?.user ?? null)
+        
+        // Persist session changes
+        if (session) {
+          await storage.set("supabase_session", session)
+        } else {
+          await storage.remove("supabase_session")
+        }
+      }
+    )
 
-    return () => {
-      subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   }, [])
 
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    await storage.remove("supabase_session")
+    setSession(null)
+    setUser(null)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, session }}>
+    <AuthContext.Provider value={{ user, session, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   )
@@ -118,65 +136,52 @@ function GoogleSvg() {
 
 // Login component
 function LoginComponent() {
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   const handleLogin = async () => {
+    setIsLoading(true)
+    setError(null)
+    
     try {
-      const manifest = chrome.runtime.getManifest()
-      const url = new URL("https://accounts.google.com/o/oauth2/auth")
-      url.searchParams.set("client_id", manifest.oauth2.client_id)
-      url.searchParams.set("response_type", "id_token")
-      url.searchParams.set("access_type", "offline")
-      url.searchParams.set(
-        "redirect_uri",
-        `https://${chrome.runtime.id}.chromiumapp.org`
-      )
-      url.searchParams.set("scope", manifest.oauth2.scopes.join(" "))
-
-      chrome.identity.launchWebAuthFlow(
-        {
-          url: url.href,
-          interactive: true
-        },
-        async (redirectedTo) => {
-          if (chrome.runtime.lastError) {
-            console.error("Auth failed:", chrome.runtime.lastError)
-          } else {
-            // Auth was successful, extract the ID token from the redirectedTo URL
-            const url = new URL(redirectedTo)
-            const params = new URLSearchParams(url.hash.substring(1)) // Remove the # from the hash
-            const idToken = params.get("id_token")
-
-            if (idToken) {
-              const { data, error } = await supabase.auth.signInWithIdToken({
-                provider: "google",
-                token: idToken
-              })
-
-              if (error) {
-                console.error("Supabase sign in error:", error)
-              } else {
-                console.log("Successfully signed in:", data)
-              }
-            }
-          }
-        }
-      )
-    } catch (err) {
-      console.error("Login error:", err)
+      // Use background script for authentication
+      const response = await sendToBackground({
+        name: "google-auth",
+        body: {}
+      })
+      
+      if (!response.success) {
+        setError(response.error || "Authentication failed")
+      }
+      // If successful, auth state change will update the UI automatically
+    } catch (error) {
+      console.error("Login failed:", error)
+      setError("Failed to sign in. Please try again.")
+    } finally {
+      setIsLoading(false)
     }
   }
 
   return (
     <div className="plasmo-flex plasmo-flex-col plasmo-items-center plasmo-justify-center plasmo-gap-6 plasmo-p-6 plasmo-w-80">
       <h1 className="plasmo-text-2xl plasmo-font-bold">HomeworkCenter</h1>
+      
+      {error && (
+        <div className="plasmo-text-red-500 plasmo-text-sm plasmo-text-center">
+          {error}
+        </div>
+      )}
+      
       <button
         onClick={handleLogin}
+        disabled={isLoading}
         aria-label="Sign in with Google"
-        className="plasmo-flex plasmo-items-center plasmo-bg-white plasmo-border plasmo-border-gray-300 plasmo-rounded-md plasmo-p-0.5 plasmo-pr-3 hover:plasmo-bg-gray-100 plasmo-transition-colors plasmo-cursor-pointer">
+        className="plasmo-flex plasmo-items-center plasmo-bg-white plasmo-border plasmo-border-gray-300 plasmo-rounded-md plasmo-p-0.5 plasmo-pr-3 hover:plasmo-bg-gray-100 plasmo-transition-colors plasmo-cursor-pointer disabled:plasmo-opacity-50">
         <div className="plasmo-flex plasmo-items-center plasmo-justify-center plasmo-w-9 plasmo-h-9 plasmo-rounded-l">
           <GoogleSvg />
         </div>
         <span className="plasmo-text-sm plasmo-text-gray-700 plasmo-ml-1 plasmo-tracking-wider">
-          Sign in with Google
+          {isLoading ? "Signing in..." : "Sign in with Google"}
         </span>
       </button>
     </div>
@@ -185,7 +190,7 @@ function LoginComponent() {
 
 // Main popup content
 function PopupContent() {
-  const { user } = useAuth()
+  const { user, signOut, loading } = useAuth()
   const copySessionMutation = useMutation({
     mutationFn: async () => {
       const [tab] = await chrome.tabs.query({
@@ -210,20 +215,37 @@ function PopupContent() {
     }
   })
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="plasmo-flex plasmo-items-center plasmo-justify-center plasmo-p-4 plasmo-w-64">
+        <div className="plasmo-text-gray-500">Loading...</div>
+      </div>
+    )
+  }
+
   // If not logged in, show login component
-  // if (!user) {
-  //   return <LoginComponent />
-  // }
+  if (!user) {
+    return <LoginComponent />
+  }
 
   // If logged in, show the main popup content
   return (
     <div className="plasmo-flex plasmo-flex-col plasmo-items-center plasmo-justify-center plasmo-p-4 plasmo-w-64">
+      <div className="plasmo-text-sm plasmo-text-gray-600 plasmo-mb-2">
+        {user.email}
+      </div>
       <CountButton />
       <button
         onClick={() => copySessionMutation.mutate()}
         disabled={copySessionMutation.isPending}
         className="plasmo-mt-4 plasmo-px-4 plasmo-py-2 plasmo-bg-blue-500 plasmo-text-white plasmo-rounded plasmo-font-medium hover:plasmo-bg-blue-600 disabled:plasmo-opacity-50">
         {copySessionMutation.isPending ? "Copying..." : "Copy Session"}
+      </button>
+      <button
+        onClick={signOut}
+        className="plasmo-mt-2 plasmo-px-4 plasmo-py-2 plasmo-bg-gray-200 plasmo-text-gray-700 plasmo-rounded plasmo-font-medium hover:plasmo-bg-gray-300">
+        Sign Out
       </button>
     </div>
   )
@@ -232,9 +254,9 @@ function PopupContent() {
 function IndexPopup() {
   return (
     <QueryClientProvider client={queryClient}>
-      {/* <AuthProvider> */}
-      <PopupContent />
-      {/* </AuthProvider> */}
+      <AuthProvider>
+        <PopupContent />
+      </AuthProvider>
     </QueryClientProvider>
   )
 }
