@@ -1,10 +1,26 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  @import url("https://fonts.googleapis.com/css2?family=Asul:wght@400;700&display=swap");
+}
+
 #plasmo-shadow-container {
   all: initial;
   box-sizing: border-box;
+}
+
+@theme {
+  --fill-google-text-gray: #3c4043;
+  --fill-google-button-blue: #1a73e8;
+  --fill-google-button-blue-hover: #5195ee;
+  --fill-google-button-dark: #202124;
+  --fill-google-button-dark-hover: #555658;
+  --fill-google-button-border-light: #dadce0;
+  --fill-google-logo-blue: #4285f4;
+  --fill-google-logo-green: #34a853;
+  --fill-google-logo-yellow: #fbbc05;
+  --fill-google-logo-red: #ea4335;
 }
