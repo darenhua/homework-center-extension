@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+const defaultTheme = require('tailwindcss/defaultTheme')
+
 module.exports = {
   content: ["./src/**/*.{tsx,html}"],
   darkMode: "media",
@@ -6,8 +8,8 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        'asul': ['Asul', 'system-ui', 'sans-serif'],
-        'sans': ['Asul', 'system-ui', 'sans-serif'], // Make Asul the default sans font
+        'asul': ['"Asul"', ...defaultTheme.fontFamily.sans],
+        'sans': ['"Asul"', ...defaultTheme.fontFamily.sans], // Make Asul the default sans font
       }
     }
   }

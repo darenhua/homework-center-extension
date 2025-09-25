@@ -1,14 +1,9 @@
 /* Google Fonts import for Plasmo content scripts */
 @import url('https://fonts.googleapis.com/css2?family=Asul:wght@400;700&display=swap');
 
-/* Font family CSS variables for easy reference */
-:root {
-  --font-asul: 'Asul', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-}
-
-/* Ensure fonts are available globally for the content script */
+/* Ensure Asul font is available globally for the content script */
 * {
-  font-family: var(--font-asul);
+  font-family: "Asul", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
 /* Specific Sonner font styling */
@@ -19,5 +14,5 @@
 [data-sonner-toast] [data-title],
 [data-sonner-toast] [data-description],
 [data-sonner-toast] [data-button] {
-  font-family: var(--font-asul) !important;
+  font-family: "Asul", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji" !important;
 }

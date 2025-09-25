@@ -1,34 +1,18 @@
 
-/* Import Asul font from Google Fonts as fallback until local files are available */
-@import url("https://fonts.googleapis.com/css2?family=Asul:wght@400;700&display=swap");
-
-/* Local font files - uncomment when font files are available */
-/*
-@font-face {
-  font-family: "Asul";
-  font-weight: 400;
-  src: url("./assets/Asul/Asul-Regular.ttf") format("truetype");
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Asul";
-  font-weight: 600;
-  src: url("./assets/Asul/Asul-Bold.ttf") format("truetype");
-  font-display: swap;
-}
-*/
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  @import url("https://fonts.googleapis.com/css2?family=Asul:wght@400;700&display=swap");
+}
 
 #plasmo-shadow-container {
   all: initial;
   box-sizing: border-box;
 }
+
 @theme {
-  --font-asul: "Asul", sans-serif;
   --fill-google-text-gray: #3c4043;
   --fill-google-button-blue: #1a73e8;
   --fill-google-button-blue-hover: #5195ee;
